@@ -23,6 +23,10 @@ const Navbar = () => {
             Explore
           </Link>
 
+          <Link to="/leaderboard" className="transition hover:text-orange-500">
+            Leaderboard
+          </Link>
+          
           <Link to="/campaigns" className="hover:text-brand transition-colors">
             Live Bids
           </Link>
@@ -40,9 +44,12 @@ const Navbar = () => {
             <Search size={20} />
           </button>
 
-          <button className="hidden sm:block text-sm font-semibold text-neutral-700 hover:text-brand">
+          <Link
+            to="/login"
+            className="hidden sm:block text-sm font-semibold text-neutral-700 hover:text-brand"
+          >
             Login
-          </button>
+          </Link>
 
           <button className="flex items-center gap-2 bg-brand hover:bg-brand-dark text-white px-5 py-3 rounded-xl text-sm font-bold transition-all">
             Get Featured
