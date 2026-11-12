@@ -13,6 +13,7 @@ import {
   Heart,
   MessageCircle,
   Star,
+  Trash2,
 } from "lucide-react";
 
 import Navbar from "../components/layout/Navbar";
@@ -21,7 +22,10 @@ import { businesses } from "../data/businesses";
 import { dailyWinners } from "../data/dailyWinners";
 import { risingStars } from "../data/risingStars";
 import { newEntrants } from "../data/newEntrants";
-import { communityFavourites } from "../data/communityFavourites";
+import {
+  communityFavourites,
+  type CommunityFavourite,
+} from "../data/communityFavourites";
 import { calculateCommunityScore } from "../utils/communityScore";
 
 const cities = ["All India", "Mumbai", "Thane", "Pune"];
@@ -36,8 +40,15 @@ const categories = [
   "Bakery",
 ];
 
-type TabType =| "overall"| "winners"| "rising"| "new"| "community";
-
+type TabType = "overall" | "winners" | "rising" | "new" | "community";
+type CommunityPeriod = "week" | "month" | "all";
+interface BusinessComment {
+  id: number;
+  businessId: number;
+  text: string;
+  author: string;
+  createdAt: string;
+}
 const formatBid = (amount: number) => `₹${amount.toLocaleString("en-IN")}`;
 
 const tabs = [
@@ -56,7 +67,64 @@ export default function Leaderboard() {
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
 
   const [rankingLimit, setRankingLimit] = useState<number | "all">(10);
+  const [communityPeriod, setCommunityPeriod] =
+    useState<CommunityPeriod>("week");
+  // Community engagement interactions
+  const [likedBusinesses, setLikedBusinesses] = useState<number[]>([]);
+  const [followedBusinesses, setFollowedBusinesses] = useState<number[]>([]);
+  // Community comments
+  const [comments, setComments] = useState<BusinessComment[]>([]);
+  const [commentInputs, setCommentInputs] = useState<Record<number, string>>(
+    {},
+  );
+  const [expandedComments, setExpandedComments] = useState<number[]>([]);
+  const toggleLike = (businessId: number) => {
+    setLikedBusinesses((prev) =>
+      prev.includes(businessId)
+        ? prev.filter((id) => id !== businessId)
+        : [...prev, businessId],
+    );
+  };
 
+  const toggleFollow = (businessId: number) => {
+    setFollowedBusinesses((prev) =>
+      prev.includes(businessId)
+        ? prev.filter((id) => id !== businessId)
+        : [...prev, businessId],
+    );
+  };
+  const toggleComments = (businessId: number) => {
+    setExpandedComments((prev) =>
+      prev.includes(businessId)
+        ? prev.filter((id) => id !== businessId)
+        : [...prev, businessId],
+    );
+  };
+
+  const addComment = (businessId: number) => {
+    const text = commentInputs[businessId]?.trim();
+
+    if (!text) return;
+
+    const newComment: BusinessComment = {
+      id: Date.now(),
+      businessId,
+      text,
+      author: "You",
+      createdAt: new Date().toLocaleString("en-IN"),
+    };
+
+    setComments((prev) => [...prev, newComment]);
+
+    setCommentInputs((prev) => ({
+      ...prev,
+      [businessId]: "",
+    }));
+  };
+
+  const deleteComment = (commentId: number) => {
+    setComments((prev) => prev.filter((comment) => comment.id !== commentId));
+  };
   // Overall rankings
   const rankedBusinesses = useMemo(() => {
     return businesses
@@ -125,40 +193,100 @@ export default function Leaderboard() {
           new Date(b.joinedDate).getTime() - new Date(a.joinedDate).getTime(),
       );
   }, [selectedCity, selectedCategory]);
-// const filteredCommunityFavourites = communityFavourites
-//   .filter((business) => {
-//     const matchesCity =
-//       selectedCity === "All India" || business.city === selectedCity;
+  // const getCommunityScore = (business: CommunityFavourite) => {
+  //   if (communityPeriod === "week") {
+  //     return calculateCommunityScore(
+  //       business.weeklyLikes,
+  //       business.weeklyComments,
+  //       business.weeklyFollowers,
+  //     );
+  //   }
 
-//     const matchesCategory =
-//       selectedCategory === "All Categories" ||
-//       business.category === selectedCategory;
+  //   if (communityPeriod === "month") {
+  //     return calculateCommunityScore(
+  //       business.monthlyLikes,
+  //       business.monthlyComments,
+  //       business.monthlyFollowers,
+  //     );
+  //   }
 
-//     return matchesCity && matchesCategory;
-//   })
-//   .sort(
-//     (a, b) =>
-//       b.likes +
-//       b.comments * 2 +
-//       b.followers * 3 -
-//       (a.likes + a.comments * 2 + a.followers * 3),
-//   );
-const filteredCommunityFavourites = communityFavourites
-  .filter((business) => {
-    const matchesCity =
-      selectedCity === "All India" || business.city === selectedCity;
+  //   return calculateCommunityScore(
+  //     business.likes,
+  //     business.comments,
+  //     business.followers,
+  //   );
+  // };
+  const getCommunityScore = (business: CommunityFavourite) => {
+    const stats = getCommunityStats(business);
 
-    const matchesCategory =
-      selectedCategory === "All Categories" ||
-      business.category === selectedCategory;
+    const likes = stats.likes + (likedBusinesses.includes(business.id) ? 1 : 0);
 
-    return matchesCity && matchesCategory;
-  })
-  .sort(
-    (a, b) =>
-      calculateCommunityScore(b.likes, b.comments, b.followers) -
-      calculateCommunityScore(a.likes, a.comments, a.followers),
-  );
+    const businessComments = comments.filter(
+      (comment) => comment.businessId === business.id,
+    ).length;
+
+    const totalComments = stats.comments + businessComments;
+
+    const followers =
+      stats.followers + (followedBusinesses.includes(business.id) ? 1 : 0);
+
+    return calculateCommunityScore(likes, totalComments, followers);
+  };
+  const getWeeklyCommunityScore = (business: CommunityFavourite) => {
+    const likes =
+      business.weeklyLikes + (likedBusinesses.includes(business.id) ? 1 : 0);
+
+    const businessComments = comments.filter(
+      (comment) => comment.businessId === business.id,
+    ).length;
+
+    const totalComments = business.weeklyComments + businessComments;
+
+    const followers =
+      business.weeklyFollowers +
+      (followedBusinesses.includes(business.id) ? 1 : 0);
+
+    return calculateCommunityScore(likes, totalComments, followers);
+  };
+  const getCommunityStats = (business: CommunityFavourite) => {
+    if (communityPeriod === "week") {
+      return {
+        likes: business.weeklyLikes,
+        comments: business.weeklyComments,
+        followers: business.weeklyFollowers,
+      };
+    }
+
+    if (communityPeriod === "month") {
+      return {
+        likes: business.monthlyLikes,
+        comments: business.monthlyComments,
+        followers: business.monthlyFollowers,
+      };
+    }
+
+    return {
+      likes: business.likes,
+      comments: business.comments,
+      followers: business.followers,
+    };
+  };
+  const filteredCommunityFavourites = communityFavourites
+    .filter((business) => {
+      const matchesCity =
+        selectedCity === "All India" || business.city === selectedCity;
+
+      const matchesCategory =
+        selectedCategory === "All Categories" ||
+        business.category === selectedCategory;
+
+      return matchesCity && matchesCategory;
+    })
+    .sort((a, b) => getCommunityScore(b) - getCommunityScore(a));
+
+  const weeklyFavourite = [...filteredCommunityFavourites].sort(
+    (a, b) => getWeeklyCommunityScore(b) - getWeeklyCommunityScore(a),
+  )[0];
   return (
     <div className="min-h-screen bg-stone-50">
       <Navbar />
@@ -713,7 +841,6 @@ const filteredCommunityFavourites = communityFavourites
                 <div className="rounded-xl bg-white p-3 text-orange-500">
                   <Heart size={24} />
                 </div>
-
                 <div>
                   <h2 className="text-xl font-bold text-neutral-900">
                     Community Favourites
@@ -724,87 +851,300 @@ const filteredCommunityFavourites = communityFavourites
                 </div>
               </div>
             </div>
-
-            {filteredCommunityFavourites.map((business, index) => (
-              <div
-                key={business.id}
-                className="flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5 sm:flex-row sm:items-center sm:justify-between"
-              >
-                <div className="flex items-center gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-50 font-bold text-orange-600">
-                    #{index + 1}
-                  </div>
-
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="font-bold text-neutral-900">
-                        {business.name}
-                      </h3>
-
-                      {business.isWeeklyFavourite && (
-                        <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-700">
-                          <Star size={12} />
-                          Weekly Favourite
-                        </span>
-                      )}
+            {/* Weekly Community Favourite */}
+            {weeklyFavourite && (
+              <div className="relative overflow-hidden rounded-2xl border border-amber-200 bg-gradient-to-r from-amber-50 via-white to-orange-50 p-6 shadow-sm">
+                <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-amber-100 text-amber-600">
+                      <Trophy size={28} />
                     </div>
 
-                    <p className="mt-1 text-sm text-neutral-500">
-                      {business.category} · {business.location}, {business.city}
-                    </p>
+                    <div>
+                      <span className="text-xs font-bold uppercase tracking-wider text-amber-600">
+                        🏆 Community Favourite of the Week
+                      </span>
 
-                    {/* Community Score */}
-                    <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-1.5">
-                      <Star size={15} className="text-orange-500" />
+                      <h3 className="mt-1 font-heading text-2xl font-bold text-neutral-900">
+                        {weeklyFavourite.name}
+                      </h3>
 
-                      <span className="text-sm font-semibold text-orange-700">
-                        {calculateCommunityScore(
-                          business.likes,
-                          business.comments,
-                          business.followers,
-                        ).toLocaleString("en-IN")}{" "}
-                        Community Points
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {weeklyFavourite.category} · {weeklyFavourite.location},{" "}
+                        {weeklyFavourite.city}
+                      </p>
+
+                      <span className="mt-3 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">
+                        Weekly Champion
                       </span>
                     </div>
                   </div>
-                </div>
 
-                {/* Engagement Statistics */}
-                <div className="grid grid-cols-3 gap-4 text-center">
-                  <div>
-                    <Heart className="mx-auto mb-1 text-rose-500" size={18} />
-                    <p className="font-bold text-neutral-900">
-                      {business.likes.toLocaleString("en-IN")}
-                    </p>
-                    <p className="text-xs text-neutral-500">Likes</p>
-                  </div>
+                  <div className="grid grid-cols-2 gap-4 sm:min-w-64">
+                    <div className="rounded-xl bg-white/80 p-3">
+                      <p className="text-xs text-neutral-500">
+                        Community Points
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-orange-600">
+                        {calculateCommunityScore(
+                          weeklyFavourite.weeklyLikes,
+                          weeklyFavourite.weeklyComments,
+                          weeklyFavourite.weeklyFollowers,
+                        ).toLocaleString("en-IN")}
+                      </p>
+                    </div>
 
-                  <div>
-                    <MessageCircle
-                      className="mx-auto mb-1 text-blue-500"
-                      size={18}
-                    />
-                    <p className="font-bold text-neutral-900">
-                      {business.comments.toLocaleString("en-IN")}
-                    </p>
-                    <p className="text-xs text-neutral-500">Comments</p>
-                  </div>
-
-                  <div>
-                    <Users className="mx-auto mb-1 text-green-500" size={18} />
-                    <p className="font-bold text-neutral-900">
-                      {business.followers.toLocaleString("en-IN")}
-                    </p>
-                    <p className="text-xs text-neutral-500">Followers</p>
+                    <div className="rounded-xl bg-white/80 p-3">
+                      <p className="text-xs text-neutral-500">
+                        Weekly Engagement
+                      </p>
+                      <p className="mt-1 text-2xl font-bold text-neutral-900">
+                        {(
+                          weeklyFavourite.weeklyLikes +
+                          weeklyFavourite.weeklyComments +
+                          weeklyFavourite.weeklyFollowers
+                        ).toLocaleString("en-IN")}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
-            ))}
+            )}
+            {/* Community Ranking Period Selector */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { id: "week", label: "This Week" },
+                { id: "month", label: "This Month" },
+                { id: "all", label: "All Time" },
+              ].map((period) => (
+                <button
+                  key={period.id}
+                  onClick={() =>
+                    setCommunityPeriod(period.id as CommunityPeriod)
+                  }
+                  className={`rounded-full px-5 py-2 text-sm font-semibold transition ${
+                    communityPeriod === period.id
+                      ? "bg-orange-500 text-white"
+                      : "border border-neutral-200 bg-white text-neutral-600 hover:bg-orange-50"
+                  }`}
+                >
+                  {period.label}
+                </button>
+              ))}
+            </div>
+            {filteredCommunityFavourites.map((business, index) => {
+              const stats = getCommunityStats(business);
+              return (
+                <div
+                  key={business.id}
+                  className="flex flex-col gap-4 rounded-2xl border border-neutral-200 bg-white p-5"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-50 font-bold text-orange-600">
+                      #{index + 1}
+                    </div>
 
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h3 className="font-bold text-neutral-900">
+                          {business.name}
+                        </h3>
+
+                        {business.id === weeklyFavourite?.id && (
+                          <span className="flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-700">
+                            <Star size={12} />
+                            Weekly Favourite
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="mt-1 text-sm text-neutral-500">
+                        {business.category} · {business.location},{" "}
+                        {business.city}
+                      </p>
+
+                      {/* Community Score */}
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-lg bg-orange-50 px-3 py-1.5">
+                        <Star size={15} className="text-orange-500" />
+
+                        <span className="text-sm font-semibold text-orange-700">
+                          {getCommunityScore(business).toLocaleString("en-IN")}{" "}
+                          Community Points
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Engagement Statistics */}
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    {/* LIKE BUTTON */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleLike(business.id)}
+                        className="group"
+                      >
+                        <Heart
+                          size={20}
+                          className={`mx-auto mb-1 transition ${
+                            likedBusinesses.includes(business.id)
+                              ? "fill-rose-500 text-rose-500"
+                              : "text-rose-500 group-hover:scale-110"
+                          }`}
+                        />
+
+                        <p className="font-bold text-neutral-900">
+                          {(
+                            stats.likes +
+                            (likedBusinesses.includes(business.id) ? 1 : 0)
+                          ).toLocaleString("en-IN")}
+                        </p>
+                      </button>
+
+                      <p className="text-xs text-neutral-500">Likes</p>
+                    </div>
+
+                    {/* COMMENTS BUTTON */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleComments(business.id)}
+                        className="group"
+                      >
+                        <MessageCircle
+                          size={20}
+                          className={`mx-auto mb-1 transition ${
+                            expandedComments.includes(business.id)
+                              ? "text-blue-700 scale-110"
+                              : "text-blue-500 group-hover:scale-110"
+                          }`}
+                        />
+                        <p className="font-bold text-neutral-900">
+                          {(
+                            stats.comments +
+                            comments.filter(
+                              (comment) => comment.businessId === business.id,
+                            ).length
+                          ).toLocaleString("en-IN")}
+                        </p>
+                      </button>
+                      <p className="text-xs text-neutral-500">Comments</p>
+                    </div>
+
+                    {/* FOLLOW BUTTON */}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => toggleFollow(business.id)}
+                        className="group"
+                      >
+                        <Users
+                          size={20}
+                          className={`mx-auto mb-1 transition ${
+                            followedBusinesses.includes(business.id)
+                              ? "text-green-700 scale-110"
+                              : "text-green-500 group-hover:scale-110"
+                          }`}
+                        />
+
+                        <p className="font-bold text-neutral-900">
+                          {(
+                            stats.followers +
+                            (followedBusinesses.includes(business.id) ? 1 : 0)
+                          ).toLocaleString("en-IN")}
+                        </p>
+                      </button>
+
+                      <p className="text-xs text-neutral-500">Followers</p>
+                    </div>
+                  </div>
+                  {/* EXPANDABLE COMMENTS PANEL */}
+                  {expandedComments.includes(business.id) && (
+                    <div className="w-full border-t border-neutral-100 pt-5">
+                      <h4 className="mb-4 font-semibold text-neutral-900">
+                        Community Comments
+                      </h4>
+
+                      {/* Comment Input */}
+                      <div className="flex flex-col gap-3 sm:flex-row">
+                        <input
+                          type="text"
+                          value={commentInputs[business.id] || ""}
+                          onChange={(e) =>
+                            setCommentInputs((prev) => ({
+                              ...prev,
+                              [business.id]: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              addComment(business.id);
+                            }
+                          }}
+                          placeholder="Share your experience..."
+                          maxLength={300}
+                          className="flex-1 rounded-xl border border-neutral-200 px-4 py-3 text-sm outline-none focus:border-orange-500"
+                        />
+
+                        <button
+                          type="button"
+                          onClick={() => addComment(business.id)}
+                          disabled={!commentInputs[business.id]?.trim()}
+                          className="rounded-xl bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-600 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Post Comment
+                        </button>
+                      </div>
+
+                      {/* Comments List */}
+                      <div className="mt-5 space-y-3">
+                        {comments
+                          .filter(
+                            (comment) => comment.businessId === business.id,
+                          )
+                          .map((comment) => (
+                            <div
+                              key={comment.id}
+                              className="flex items-start justify-between gap-3 rounded-xl bg-neutral-50 p-4"
+                            >
+                              <div>
+                                <p className="text-sm font-semibold text-neutral-900">
+                                  {comment.author}
+                                </p>
+                                <p className="mt-1 text-sm text-neutral-700">
+                                  {comment.text}
+                                </p>
+                                <p className="mt-2 text-xs text-neutral-400">
+                                  {comment.createdAt}
+                                </p>
+                              </div>
+                              <button
+                                onClick={() => deleteComment(comment.id)}
+                                title="Delete comment"
+                                aria-label="Delete comment"
+                                className="rounded-md p-1.5 text-neutral-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                              >
+                                <Trash2 size={16} strokeWidth={1.8} />
+                              </button>
+                            </div>
+                          ))}
+                        {comments.filter(
+                          (comment) => comment.businessId === business.id,
+                        ).length === 0 && (
+                          <p className="py-4 text-center text-sm text-neutral-400">
+                            No comments yet. Be the first to share your
+                            experience!
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {filteredCommunityFavourites.length === 0 && (
               <EmptyState message="No community favourites found for these filters." />
             )}
-
             {/* Ranking Explanation - OUTSIDE map() */}
             <div className="rounded-xl border border-neutral-200 bg-neutral-50 p-4">
               <h3 className="font-semibold text-neutral-800">
@@ -816,7 +1156,6 @@ const filteredCommunityFavourites = communityFavourites
                 points. Rankings are calculated independently of business bids.
               </p>
             </div>
-
           </div>
         )}
       </main>
